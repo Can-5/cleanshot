@@ -1,0 +1,16 @@
+[package]
+name = "cleanshot"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Screenshot-domain logic for Orbit: regions, annotation model, validation, archive naming. No capture engine lives here."
+repository = "https://github.com/Can-5/cleanshot"
+keywords = ["screenshot", "annotation", "orbit"]
+categories = ["graphics"]
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+thiserror = "2"
+
+[dev-dependencies]
+serde_json = "1"
