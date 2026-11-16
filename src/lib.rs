@@ -105,6 +105,34 @@ pub fn validate_annotation(annotation: &Annotation, image_size: (u32, u32)) -> R
     }
 }
 
+/// Count annotations per kind ("arrow" | "rectangle" | "text" | "blur_region" | "highlight").
+pub fn annotation_count_by_kind(annotations: &[Annotation]) -> std::collections::BTreeMap<&'static str, usize> {
+    let mut counts = std::collections::BTreeMap::new();
+    for a in annotations {
+        let kind = match a {
+            Annotation::Arrow { .. } => "arrow",
+            Annotation::Rectangle { .. } => "rectangle",
+            Annotation::Text { .. } => "text",
+            Annotation::BlurRegion { .. } => "blur_region",
+            Annotation::Highlight { .. } => "highlight",
+        };
+        *counts.entry(kind).or_default() += 1;
+    }
+    counts
+}
+
+/// Total blurred pixel area across all `BlurRegion` annotations (width * height sum).
+/// Non-blur kinds contribute 0.
+pub fn total_blur_area(annotations: &[Annotation]) -> u64 {
+    annotations
+        .iter()
+        .map(|a| match a {
+            Annotation::BlurRegion { rect, .. } => rect.width as u64 * rect.height as u64,
+            _ => 0,
+        })
+        .sum()
+}
+
 /// Metadata a capture carries once the platform produced it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CaptureMeta {
@@ -181,6 +209,28 @@ mod tests {
         assert!(matches!(validate_annotation(&a, (100, 100)), Err(CleanShotError::BlurTooSmall(2))));
         let ok = Annotation::BlurRegion { rect: Region::new(0, 0, 50, 50), radius: 8 };
         assert!(validate_annotation(&ok, (100, 100)).is_ok());
+    }
+
+    #[test]
+    fn count_by_kind_groups_and_blur_area_sums() {
+        let annotations = vec![
+            Annotation::Arrow { from: (0, 0), to: (5, 5), color: "#fff".into(), stroke: 2 },
+            Annotation::Rectangle { rect: Region::new(0, 0, 10, 10), color: "#fff".into(), stroke: 1 },
+            Annotation::BlurRegion { rect: Region::new(0, 0, 20, 30), radius: 8 },
+            Annotation::BlurRegion { rect: Region::new(5, 5, 40, 10), radius: 4 },
+            Annotation::Highlight { rect: Region::new(0, 0, 100, 100), color: "#ff0".into() },
+            Annotation::Text { at: (1, 1), text: "note".into(), color: "#fff".into(), size: 10 },
+        ];
+        let counts = annotation_count_by_kind(&annotations);
+        assert_eq!(counts.get("arrow"), Some(&1));
+        assert_eq!(counts.get("rectangle"), Some(&1));
+        assert_eq!(counts.get("text"), Some(&1));
+        assert_eq!(counts.get("blur_region"), Some(&2));
+        assert_eq!(counts.get("highlight"), Some(&1));
+        // 20*30 + 40*10 = 1000; highlight rect must NOT count
+        assert_eq!(total_blur_area(&annotations), 1000);
+        assert_eq!(annotation_count_by_kind(&[]).len(), 0);
+        assert_eq!(total_blur_area(&[]), 0);
     }
 
     #[test]
